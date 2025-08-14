@@ -3,12 +3,14 @@ package com.m42hub.m42hub_api.services.user;
 import com.m42hub.m42hub_api.services.util.TestUtils;
 import com.m42hub.m42hub_api.user.entity.SystemRole;
 import com.m42hub.m42hub_api.user.entity.User;
+import com.m42hub.m42hub_api.user.repository.UserRepository;
 import com.m42hub.m42hub_api.user.service.SystemRoleService;
 import com.m42hub.m42hub_api.user.service.UserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
@@ -18,6 +20,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class UserServiceTests {
     private static final Logger logger = LoggerFactory.getLogger(UserServiceTests.class);
@@ -40,6 +49,14 @@ public class UserServiceTests {
     private static final String JANE_LAST_NAME = "Smith";
     private static final String JANE_EMAIL = "jane@example.com";
 
+    private static final Long NEW_USER_ID = 3L;
+    private static final String NEW_USER_USERNAME = "new.user";
+    private static final String NEW_USER_FIRST_NAME = "New";
+    private static final String NEW_USER_LAST_NAME = "User";
+    private static final String NEW_USER_EMAIL = "new@example.com";
+    private static final String RAW_PASSWORD = "password123";
+    private static final String ENCODED_PASSWORD = "encodedPassword";
+
     @Mock
     private SystemRoleService systemRoleService;
 
@@ -47,6 +64,9 @@ public class UserServiceTests {
     private PasswordEncoder passwordEncoder;
 
     @Mock
+    private UserRepository userRepository;
+
+    @InjectMocks
     private UserService userService;
 
     private AutoCloseable mocks;
@@ -54,6 +74,8 @@ public class UserServiceTests {
     private SystemRole adminRole;
     private User john;
     private User jane;
+    private User newUser;
+    private User savedUser;
 
     @BeforeEach
     public void setUp() {
@@ -64,6 +86,26 @@ public class UserServiceTests {
 
         john = TestUtils.createUser(JOHN_ID, JOHN_USERNAME, JOHN_FIRST_NAME, JOHN_LAST_NAME, JOHN_EMAIL, adminRole);
         jane = TestUtils.createUser(JANE_ID, JANE_USERNAME, JANE_FIRST_NAME, JANE_LAST_NAME, JANE_EMAIL, userRole);
+
+        newUser = TestUtils.createUser(
+                null,
+                NEW_USER_USERNAME,
+                NEW_USER_FIRST_NAME,
+                NEW_USER_LAST_NAME,
+                NEW_USER_EMAIL,
+                adminRole
+        );
+        newUser.setPassword(RAW_PASSWORD);
+
+        savedUser = TestUtils.createUser(
+                NEW_USER_ID,
+                NEW_USER_USERNAME,
+                NEW_USER_FIRST_NAME,
+                NEW_USER_LAST_NAME,
+                NEW_USER_EMAIL,
+                adminRole
+        );
+        savedUser.setPassword(ENCODED_PASSWORD);
     }
 
     @AfterEach
@@ -74,43 +116,72 @@ public class UserServiceTests {
     @Test
     public void shouldReturnAllUsers_whenFindAllIsCalled() {
         // GIVEN
-        List<User> fakeUsers = List.of(john, jane);
-        Mockito.when(userService.findAll()).thenReturn(fakeUsers);
+        List<User> expectedUsers = List.of(john, jane);
+        Mockito.when(userRepository.findAll()).thenReturn(expectedUsers);
 
         // WHEN
         List<User> result = userService.findAll();
 
         // THEN
-        Assertions.assertEquals(fakeUsers, result);
-        Mockito.verify(userService, Mockito.times(1)).findAll();
+        assertThat(result)
+                .hasSize(2)
+                .containsExactlyInAnyOrder(john, jane);
+        Mockito.verify(userRepository, Mockito.times(1)).findAll();
     }
 
     @Test
     public void shouldReturnUser_whenFindByIdIsCalled() {
         // GIVEN
-        Mockito.when(userService.findById(JOHN_ID)).thenReturn(Optional.of(john));
+        Mockito.when(userRepository.findById(JOHN_ID))
+                .thenReturn(Optional.of(john));
 
         // WHEN
         Optional<User> result = userService.findById(JOHN_ID);
 
         // THEN
-        Assertions.assertEquals(Optional.of(john), result);
-        Mockito.verify(userService, Mockito.times(1)).findById(JOHN_ID);
+        assertThat(result)
+                .isPresent()
+                .containsSame(john);
+        Mockito.verify(userRepository, Mockito.times(1)).findById(JOHN_ID);
+    }
+
+    @Test
+    public void shouldReturnEmpty_whenFindByInvalidId() {
+        // GIVEN
+        Long invalidId = 999L;
+        Mockito.when(userRepository.findById(invalidId))
+                .thenReturn(Optional.empty());
+
+        // WHEN
+        Optional<User> result = userService.findById(invalidId);
+
+        // THEN
+        assertThat(result).isEmpty();
+        Mockito.verify(userRepository, Mockito.times(1)).findById(invalidId);
     }
 
     @Test
     public void shouldSaveUserSucceed() {
         // GIVEN
-        Mockito.when(passwordEncoder.encode(Mockito.anyString())).thenReturn("encodedPass");
-        Mockito.when(systemRoleService.findById(ADMIN_ROLE_ID)).thenReturn(Optional.of(adminRole));
-        Mockito.when(userService.save(john)).thenReturn(john);
+        Mockito.when(passwordEncoder.encode(RAW_PASSWORD))
+                .thenReturn(ENCODED_PASSWORD);
+        Mockito.when(systemRoleService.findById(ADMIN_ROLE_ID))
+                .thenReturn(Optional.of(adminRole));
+        Mockito.when(userRepository.save(newUser))
+                .thenReturn(savedUser);
 
         // WHEN
-        User result = userService.save(john);
+        User result = userService.save(newUser);
 
         // THEN
-        Assertions.assertEquals(john, result);
-        Mockito.verify(userService, Mockito.times(1)).save(john);
-    }
+        assertThat(result)
+                .isNotNull()
+                .extracting(User::getId, User::getUsername)
+                .containsExactly(NEW_USER_ID, NEW_USER_USERNAME);
 
+        assertThat(newUser.getPassword()).isEqualTo(ENCODED_PASSWORD);
+        Mockito.verify(passwordEncoder, Mockito.times(1)).encode(RAW_PASSWORD);
+        Mockito.verify(systemRoleService, Mockito.times(1)).findById(ADMIN_ROLE_ID);
+        Mockito.verify(userRepository, Mockito.times(1)).save(newUser);
+    }
 }

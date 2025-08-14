@@ -5,7 +5,6 @@ import com.m42hub.m42hub_api.user.entity.Permission;
 import com.m42hub.m42hub_api.user.repository.PermissionRepository;
 import com.m42hub.m42hub_api.user.service.PermissionService;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -15,9 +14,10 @@ import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class PermissionServiceTest {
     private static final Logger logger = LoggerFactory.getLogger(PermissionServiceTest.class);
@@ -30,19 +30,31 @@ public class PermissionServiceTest {
     private static final String SECONDARY_PERMISSION_NAME = "delete";
     private static final String SECONDARY_PERMISSION_DESC = "Pode deletar algo";
 
+    private static final Long NEW_PERMISSION_ID = 3L;
+    private static final String NEW_PERMISSION_NAME = "update";
+    private static final String NEW_PERMISSION_DESC = "Pode atualizar algo";
+
     @Mock
+    private PermissionRepository permissionRepository;
+
+    @InjectMocks
     private PermissionService permissionService;
 
     private AutoCloseable mocks;
 
     private Permission permissionPrimary;
     private Permission permissionSecondary;
+    private Permission newPermission;
+    private Permission savedPermission;
 
     @BeforeEach
     public void setUp() {
         mocks = MockitoAnnotations.openMocks(this);
         permissionPrimary = TestUtils.createPermission(PRIMARY_PERMISSION_ID, PRIMARY_PERMISSION_NAME, PRIMARY_PERMISSION_DESC);
         permissionSecondary = TestUtils.createPermission(SECONDARY_PERMISSION_ID, SECONDARY_PERMISSION_NAME, SECONDARY_PERMISSION_DESC);
+
+        newPermission = TestUtils.createPermission(null, NEW_PERMISSION_NAME, NEW_PERMISSION_DESC);
+        savedPermission = TestUtils.createPermission(NEW_PERMISSION_ID, NEW_PERMISSION_NAME, NEW_PERMISSION_DESC);
     }
 
     @AfterEach
@@ -54,39 +66,63 @@ public class PermissionServiceTest {
     public void shouldReturnAllPermissions_whenFindAllIsCalled() {
         // GIVEN
         List<Permission> permissions = List.of(permissionPrimary, permissionSecondary);
-        Mockito.when(permissionService.findAll()).thenReturn(permissions);
+        Mockito.when(permissionRepository.findAll()).thenReturn(permissions);
 
         // WHEN
         List<Permission> result = permissionService.findAll();
 
         // THEN
-        Assertions.assertEquals(permissions, result);
-        Mockito.verify(permissionService, Mockito.times(1)).findAll();
+        assertThat(result)
+                .hasSize(2)
+                .containsExactlyInAnyOrder(permissionPrimary, permissionSecondary);
+        Mockito.verify(permissionRepository, Mockito.times(1)).findAll();
     }
 
     @Test
     public void shouldReturnPermission_whenFindByIdIsCalled() {
         // GIVEN
-        Mockito.when(permissionService.findById(PRIMARY_PERMISSION_ID)).thenReturn(Optional.of(permissionPrimary));
+        Mockito.when(permissionRepository.findById(PRIMARY_PERMISSION_ID))
+                .thenReturn(Optional.of(permissionPrimary));
 
         // WHEN
         Optional<Permission> result = permissionService.findById(PRIMARY_PERMISSION_ID);
 
         // THEN
-        Assertions.assertEquals(Optional.of(permissionPrimary), result);
-        Mockito.verify(permissionService, Mockito.times(1)).findById(PRIMARY_PERMISSION_ID);
+        assertThat(result)
+                .isPresent()
+                .containsSame(permissionPrimary);
+        Mockito.verify(permissionRepository, Mockito.times(1)).findById(PRIMARY_PERMISSION_ID);
+    }
+
+    @Test
+    public void shouldReturnEmpty_whenFindByInvalidId() {
+        // GIVEN
+        Long invalidId = 999L;
+        Mockito.when(permissionRepository.findById(invalidId))
+                .thenReturn(Optional.empty());
+
+        // WHEN
+        Optional<Permission> result = permissionService.findById(invalidId);
+
+        // THEN
+        assertThat(result).isEmpty();
+        Mockito.verify(permissionRepository, Mockito.times(1)).findById(invalidId);
     }
 
     @Test
     public void shouldSavePermission_whenSaveIsCalled() {
         // GIVEN
-        Mockito.when(permissionService.save(permissionPrimary)).thenReturn(permissionPrimary);
+        Mockito.when(permissionRepository.save(newPermission))
+                .thenReturn(savedPermission);
 
         // WHEN
-        Permission result = permissionService.save(permissionPrimary);
+        Permission result = permissionService.save(newPermission);
 
         // THEN
-        Assertions.assertEquals(permissionPrimary, result);
-        Mockito.verify(permissionService, Mockito.times(1)).save(permissionPrimary);
+        assertThat(result)
+                .isNotNull()
+                .extracting(Permission::getId, Permission::getName)
+                .containsExactly(NEW_PERMISSION_ID, NEW_PERMISSION_NAME);
+        Mockito.verify(permissionRepository, Mockito.times(1)).save(newPermission);
     }
 }
